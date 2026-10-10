@@ -19,7 +19,7 @@
 
 /*
 * TODO: Engine
-* - Audio system.
+* Remove IMGUI on Release builds.
 */
 
 
@@ -27,7 +27,7 @@
 * Flappy bird:
 * Uses a maximum of 3 pairs of obstacles at the same time.
 * When a pair is exiting the left border of the screen, a new pair on the right border appears.
-* 
+*
 * Player scores 1 point every time he exceeds the x center of a pair of obstacles.
 */
 
@@ -98,7 +98,7 @@ public:
 		const auto bounds = sprite_.getLocalBounds().size;
 		sprite_.setOrigin({ bounds.x / 2 , bounds.y / 2 });
 	}
-	
+
 	inline sf::Sprite& GetSprite() { return sprite_; }
 	inline u32 GetRenderOrder() const { return renderOrder_; }
 	inline auto GetHalfWidth() const { return sprite_.getLocalBounds().size.x / 2; }
@@ -110,7 +110,7 @@ private:
 };
 
 // Base of everything drawn in screen space (score, buttons, panels...).
-// TODO: Of all aspects of 2D game dev I think UI and screen space are the areas where I have the least knowledge and the greatest room for improvement.
+// Of all aspects of 2D game dev I think UI and screen space are the areas where I have the least knowledge and the greatest room for improvement.
 // So even though this implementation may work for now, it's very likely that this module will change in the future.
 class UIElement
 {
@@ -224,12 +224,10 @@ public:
 	// small and simple as possible.
 #pragma region RENDERING
 
-#ifdef _DEBUG
 	virtual void RenderDebug(sf::RenderWindow& window) const
 	{
 		//
 	}
-#endif
 
 	// Render everything.
 	void RenderAll(sf::RenderWindow& window) const
@@ -341,7 +339,7 @@ public:
 			}
 			const auto time = deltaTimeClock.restart();
 			const f32 deltaTime = time.asSeconds();
-			
+
 			// IMGUI drawing.
 			ImGui::SFML::Update(window_, time);
 			ImGui::Begin("BEGIN IMGUI");
@@ -357,7 +355,7 @@ public:
 
 			window_.clear();
 			// Draw.
-			
+
 			world_->RenderAll(window_);
 #ifdef _DEBUG
 			world_->RenderDebug(window_);
@@ -367,7 +365,7 @@ public:
 			window_.display();
 		}
 	}
-	
+
 	inline World* GetWorld() { return world_.get(); }
 
 protected:
@@ -394,7 +392,7 @@ namespace FlappyBirdGame
 	class Bird : public Entity
 	{
 	public:
-		
+
 		Bird() : Entity(MakeSprite()),
 			soundBuffer_("Assets/sfx_wing.wav"), sound_(soundBuffer_)
 		{
@@ -405,10 +403,25 @@ namespace FlappyBirdGame
 		}
 
 
+		// Playing: the wings flap and physics apply.
 		void Update(const f32 deltaTime) override
 		{
 			Animate(deltaTime);
-			
+			ApplyPhysics(deltaTime);
+		}
+
+		// Start screen: the wings flap and the bird floats around its base height (no gravity).
+		// 'offsetY' is how far from that base height the bird is right now.
+		void Hover(const f32 deltaTime, const f32 offsetY)
+		{
+			Animate(deltaTime);
+			sprite_.setPosition({ sprite_.getPosition().x, hoverBaseY_ + offsetY });
+		}
+
+		// Gravity, rotation and movement, without animating the wings.
+		// Also used while the bird falls after a crash.
+		void ApplyPhysics(const f32 deltaTime)
+		{
 			// New velocity.
 			velY_ = velY_ + GRAVITY * deltaTime;
 			velY_ = std::clamp(velY_, FLAP_IMPULSE, -FLAP_IMPULSE * 2);
@@ -428,8 +441,8 @@ namespace FlappyBirdGame
 
 			rotation_ = std::clamp(rotation_, -ROTATION_LIMIT, ROTATION_LIMIT);
 			sprite_.setRotation(sf::degrees(rotation_));
-			
-			
+
+
 			// Update position.
 
 			const auto oldY = sprite_.getPosition().y;
@@ -442,11 +455,52 @@ namespace FlappyBirdGame
 
 		}
 
+		// The world only calls this while the player can control the bird.
 		void Flap()
 		{
-			// TODO: handle a case when the player lost and the bird should not be able to flap anymore.
 			velY_ = FLAP_IMPULSE;
 			sound_.play();
+		}
+
+		// Back to the initial state at 'position'.
+		void Reset(const sf::Vector2f position)
+		{
+			sprite_.setPosition(position);
+			sprite_.setRotation(sf::degrees(0.f));
+			velY_ = 0.f;
+			rotation_ = 0.f;
+			hoverBaseY_ = position.y;
+		}
+
+		// Distance from the sprite position (its center) down to the lowest VISIBLE pixel of the bird,
+		// for the current wing frame and rotation. The sprite bounds can't be used to rest the bird on
+		// the floor: they are the rotated rectangle of the whole frame, and its lowest corner is transparent.
+		f32 GetLowestVisibleOffset() const
+		{
+			static const sf::Image image = sprite_.getTexture().copyToImage(); // Same texture for every bird: read it once.
+
+			const sf::IntRect frame = sprite_.getTextureRect();
+			const sf::Vector2f origin = sprite_.getOrigin();
+			const f32 angle = sprite_.getRotation().asRadians();
+			const f32 sinA = std::sin(angle);
+			const f32 cosA = std::cos(angle);
+			const f32 pixelHalfExtent = 0.5f * (std::abs(sinA) + std::abs(cosA)); // Lowest point of a rotated 1x1 pixel.
+
+			f32 lowest = 0.f;
+			for (i32 y = 0; y < frame.size.y; ++y)
+			{
+				for (i32 x = 0; x < frame.size.x; ++x)
+				{
+					const sf::Vector2u texel = { static_cast<u32>(frame.position.x + x), static_cast<u32>(frame.position.y + y) };
+					if (image.getPixel(texel).a < 128) continue; // Transparent.
+
+					// Pixel center relative to the origin, rotated the same way the sprite is rotated.
+					const f32 localX = static_cast<f32>(x) + 0.5f - origin.x;
+					const f32 localY = static_cast<f32>(y) + 0.5f - origin.y;
+					lowest = std::max(lowest, localX * sinA + localY * cosA + pixelHalfExtent);
+				}
+			}
+			return lowest;
 		}
 
 
@@ -489,8 +543,8 @@ namespace FlappyBirdGame
 				{ SPRITE_SIZE_INT.x * frame, 0 },
 				SPRITE_SIZE_INT // Typed this way instead of only SPRITE_SIZE because it would not compile due to type conversion failure.
 			));
-			
-			
+
+
 			frame += direction;
 			// Exceeds limits? reverse state direction.
 			if (frame >= 2 || frame <= 0)
@@ -505,6 +559,7 @@ namespace FlappyBirdGame
 		f32 velY_ = 0.f;
 		f32 rotation_ = 0.f;
 		f32 rotationSpeed_ = 2.f;
+		f32 hoverBaseY_ = 0.f; // Height around which the bird floats on the start screen.
 	public:
 		bool bChangesVerticalVelocity = true;
 
@@ -522,13 +577,13 @@ namespace FlappyBirdGame
 
 		// Animation.
 		static constexpr f32 UPDATE_ANIM_SPAN = 0.1f;
-		
+
 		// SFX.
 		sf::SoundBuffer soundBuffer_;
 		sf::Sound sound_;
 	};
 
-	
+
 	class Floor : public Entity
 	{
 	public:
@@ -584,8 +639,8 @@ namespace FlappyBirdGame
 
 		static constexpr sf::Vector2f TEXTURE_SIZE = { 336.f, 112.f };
 		// All these values were found through iteration using imgui.
-		static constexpr i32 VISIBLE_TEXTURE_WIDTH = 495; 
-		static constexpr f32 FLOOR_Y = 626.f;             
+		static constexpr i32 VISIBLE_TEXTURE_WIDTH = 495;
+		static constexpr f32 FLOOR_Y = 626.f;
 		static constexpr f32 SPEED = -120.f;
 		static constexpr const char* FLOOR_TEXTURE_PATH = "Assets/base.png";
 	};
@@ -599,30 +654,37 @@ namespace FlappyBirdGame
 		sf::Vector2f topOffset = sf::Vector2f();
 		sf::Vector2f bottomOffset = sf::Vector2f();
 
-		explicit ObstaclePair(const sf::Vector2f spawnPos, const f32 loopLength) : Entity(MakeTempOrigin(), RenderOrder::OBSTACLES), top_(MakeSprite()), bottom_(MakeSprite()), loopLength_(loopLength)
+		explicit ObstaclePair(const sf::Vector2f spawnPos, const f32 loopLength) : Entity(MakeTempOrigin(), RenderOrder::OBSTACLES), top_(MakeSprite()), bottom_(MakeSprite()), loopLength_(loopLength), spawnPos_(spawnPos)
 		{
-			// sprite_.setColor(sf::Color::Transparent); TODO: uncomment this to hide the center sprite in the final game.
+			sprite_.setColor(sf::Color::Transparent);
 			sprite_.setPosition(spawnPos);
 
 			const auto centerOrigin = sf::Vector2f(top_.getLocalBounds().size.x / 2, top_.getLocalBounds().size.y / 2);
 			top_.setOrigin(centerOrigin); // Both sprites use the same texture.
 			bottom_.setOrigin(centerOrigin);
-			
+
 			top_.setRotation(sf::degrees(180.f));
 
 			RandomizeSpritesY();
+			UpdateSpritePositions(); // Place the pipes now: the pair may not be updated for a while (start screen).
 		}
 
 		void Update(const f32 deltaTime) override
-		{			
+		{
 			sprite_.move({ speedX * deltaTime, 0.f });
 			CheckResetObstaclePair();
 
-			const auto currentPos = sprite_.getPosition();
-			top_.setPosition(currentPos + topOffset);
-			bottom_.setPosition(currentPos + bottomOffset);
+			UpdateSpritePositions();
 		}
-		
+
+		// Puts the pair back at its spawn position with new random heights (used when restarting).
+		void Reset()
+		{
+			sprite_.setPosition(spawnPos_);
+			RandomizeSpritesY();
+			UpdateSpritePositions();
+		}
+
 		void CheckResetObstaclePair()
 		{
 			const f32 halfPipeWidth = top_.getLocalBounds().size.x / 2.f;
@@ -672,7 +734,7 @@ namespace FlappyBirdGame
 			const f32 bottomTipY = bottomOffset.y - tubeHalfHeight;   // highest point of the bottom tube
 
 			const f32 gap = bottomTipY - topTipY;
-			
+
 			return gap >= MIN_Y_GAP && gap <= MAX_Y_GAP;
 		}
 
@@ -706,9 +768,17 @@ namespace FlappyBirdGame
 			return sf::Sprite(texture);
 		}
 
+		void UpdateSpritePositions()
+		{
+			const auto currentPos = sprite_.getPosition();
+			top_.setPosition(currentPos + topOffset);
+			bottom_.setPosition(currentPos + bottomOffset);
+		}
+
 		sf::Sprite top_;
 		sf::Sprite bottom_;
 		f32 loopLength_;
+		sf::Vector2f spawnPos_;
 
 		static constexpr const char* TEXTURE_PATH = "Assets/pipe-green.png";
 	};
@@ -924,16 +994,27 @@ namespace FlappyBirdGame
 			for (const char c : text)
 				totalWidth += static_cast<f32>(GetDigitRect(c - '0').size.x);
 
-			f32 x = anchor_.x - totalWidth / 2.f;
+			f32 x = anchor_.x - totalWidth / 2.f; // Left edge of the next digit.
 
 			digits_.clear();
 			digits_.reserve(text.size());
+
 			for (const char c : text)
 			{
 				const sf::IntRect rect = GetDigitRect(c - '0');
 				sf::Sprite& digit = digits_.emplace_back(GetTexture());
+
 				digit.setTextureRect(rect);
-				digit.setPosition({ x, anchor_.y });
+
+				// Center the origin of each digit.
+				digit.setOrigin(sf::Vector2f(rect.size) / 2.f);
+
+				// Position the digit using its center.
+				digit.setPosition({
+					x + static_cast<f32>(rect.size.x) / 2.f,
+					anchor_.y
+					});
+
 				x += static_cast<f32>(rect.size.x) + SPACING;
 			}
 		}
@@ -960,18 +1041,181 @@ namespace FlappyBirdGame
 		static constexpr f32 SPACING = 2.f;                    // Pixels between digits.
 	};
 
+	// Font used by all the text of this game's UI.
+	inline constexpr const char* UI_FONT_PATH = "Assets/FlappyBirdy.ttf";
+
+	inline const sf::Font& GetUIFont()
+	{
+		static const sf::Font font(UI_FONT_PATH);
+		return font;
+	}
+
+	// Text in screen space. 'anchor' is the CENTER of the text.
+	class LabelElement : public UIElement
+	{
+	public:
+		LabelElement(const std::string& text, const u32 characterSize, const sf::Vector2f anchor)
+			: text_(GetUIFont(), text, characterSize)
+		{
+			text_.setFillColor(sf::Color::White);
+			text_.setOutlineColor(sf::Color::Black);
+			text_.setOutlineThickness(3.f);
+			SetCenter(anchor);
+		}
+
+		void SetCenter(const sf::Vector2f anchor)
+		{
+			const sf::FloatRect bounds = text_.getLocalBounds();
+			text_.setOrigin(bounds.position + bounds.size / 2.f);
+			text_.setPosition(anchor);
+		}
+
+		void Draw(sf::RenderTarget& target) const override
+		{
+			target.draw(text_);
+		}
+
+	private:
+		sf::Text text_;
+	};
+
+	// Filled rectangle in screen space. 'center' is the center of the rectangle.
+	class PanelElement : public UIElement
+	{
+	public:
+		PanelElement(const sf::Vector2f center, const sf::Vector2f size, const sf::Color fill, const sf::Color outline)
+			: shape_(size)
+		{
+			shape_.setOrigin(size / 2.f);
+			shape_.setPosition(center);
+			shape_.setFillColor(fill);
+			shape_.setOutlineColor(outline);
+			shape_.setOutlineThickness(4.f);
+		}
+
+		void Draw(sf::RenderTarget& target) const override
+		{
+			target.draw(shape_);
+		}
+
+	private:
+		sf::RectangleShape shape_;
+	};
+
+	// Rectangle with a text. It doesn't read input by itself: whoever owns it asks Contains().
+	class ButtonElement : public UIElement
+	{
+	public:
+		ButtonElement(const std::string& text, const sf::Vector2f center, const sf::Vector2f size)
+			: shape_(size), label_(text, 28, center)
+		{
+			shape_.setOrigin(size / 2.f);
+			shape_.setPosition(center);
+			shape_.setFillColor(sf::Color(222, 97, 40));
+			shape_.setOutlineColor(sf::Color::White);
+			shape_.setOutlineThickness(4.f);
+		}
+
+		bool Contains(const sf::Vector2f point) const
+		{
+			return shape_.getGlobalBounds().contains(point);
+		}
+
+		void Draw(sf::RenderTarget& target) const override
+		{
+			target.draw(shape_);
+			label_.Draw(target);
+		}
+
+	private:
+		sf::RectangleShape shape_;
+		LabelElement label_;
+	};
+
 	class HUDScreen : public UIScreen
 	{
 	public:
 		explicit HUDScreen(const sf::Vector2u windowSize)
 		{
-			score_ = Add<ScoreNumber>(sf::Vector2f{ windowSize.x / 2.f, 40.f }); // Top center. Adjust y to taste.
+			score_ = Add<ScoreNumber>(
+				sf::Vector2f{ windowSize.x / 2.f, 58.f }
+			);
 		}
 
 		void SetScore(const u32 score) { score_->SetValue(score); }
 
 	private:
 		ScoreNumber* score_ = nullptr;
+	};
+
+	// Shown when the game is launched (and after pressing Play): title, hint and top score.
+	class StartScreen : public UIScreen
+	{
+	public:
+		explicit StartScreen(const sf::Vector2u windowSize) : centerX_(windowSize.x / 2.f)
+		{
+			title_ = Add<LabelElement>("FLAPPY BIRD", 54, sf::Vector2f{ centerX_, TITLE_Y });
+			Add<LabelElement>("CLICK TO START", 24, sf::Vector2f{ centerX_, 420.f });
+			Add<LabelElement>("CLICK TO FLAP", 24, sf::Vector2f{ centerX_, 455.f });
+
+			// Top score, top right corner.
+			const f32 topScoreX = windowSize.x - 50.f;
+			Add<LabelElement>("BEST", 18, sf::Vector2f{ topScoreX, 20.f });
+			topScore_ = Add<ScoreNumber>(
+				sf::Vector2f{ topScoreX, 54.f }
+			);
+		}
+
+		// The world gives the title the same offset it gives the bird, so both bob together.
+		void SetBob(const f32 offsetY) { title_->SetCenter({ centerX_, TITLE_Y + offsetY }); }
+		void SetTopScore(const u32 score) { topScore_->SetValue(score); }
+
+	private:
+		static constexpr f32 TITLE_Y = 130.f;
+
+		f32 centerX_;
+		LabelElement* title_ = nullptr;
+		ScoreNumber* topScore_ = nullptr;
+	};
+
+	// Shown once the bird has landed: score, best score and the Play button.
+	class GameOverScreen : public UIScreen
+	{
+	public:
+		explicit GameOverScreen(const sf::Vector2u windowSize)
+		{
+			const f32 centerX = windowSize.x / 2.f;
+			const f32 scoreColumnX = centerX - 90.f;
+			const f32 bestColumnX = centerX + 90.f;
+
+			Add<LabelElement>("GAME OVER", 56, sf::Vector2f{ centerX, 120.f });
+			Add<PanelElement>(sf::Vector2f{ centerX, 252.f }, sf::Vector2f{ 340.f, 110.f }, sf::Color(222, 216, 149), sf::Color(84, 56, 71));
+
+			Add<LabelElement>("SCORE", 22, sf::Vector2f{ scoreColumnX, 228.f });
+			score_ = Add<ScoreNumber>(
+				sf::Vector2f{ scoreColumnX, 268.f }
+			);
+			Add<LabelElement>("BEST", 22, sf::Vector2f{ bestColumnX, 228.f });
+			best_ = Add<ScoreNumber>(
+				sf::Vector2f{ bestColumnX, 268.f }
+			);
+
+			playButton_ = Add<ButtonElement>("PLAY", sf::Vector2f{ centerX, 370.f }, sf::Vector2f{ 160.f, 56.f });
+		}
+
+		void SetScores(const u32 score, const u32 best)
+		{
+			score_->SetValue(score);
+			best_->SetValue(best);
+		}
+
+		// 'point' is in window pixels, which is the same space the UI is drawn in.
+		bool IsPlayButtonAt(const sf::Vector2f point) const { return playButton_->Contains(point); }
+
+	private:
+		ScoreNumber* score_ = nullptr;
+		ScoreNumber* best_ = nullptr;
+		ButtonElement* playButton_ = nullptr;
 	};
 
 	class World : public ::World
@@ -993,9 +1237,8 @@ namespace FlappyBirdGame
 			assert(bird_);
 			assert(entities_[0].get() == bird_);
 
-			bird_->GetSprite().setPosition(
-				{ static_cast<f32>(window_.getSize().x) / 3, static_cast<f32>(window.getSize().y) / 2 }
-			);
+			birdStartPos_ = { static_cast<f32>(window_.getSize().x) / 3, static_cast<f32>(window_.getSize().y) / 2 };
+			bird_->Reset(birdStartPos_);
 
 			// Create Floor.
 			floor_ = Add<Floor>();
@@ -1005,10 +1248,13 @@ namespace FlappyBirdGame
 			// A pipe is still visible while its center is within half a pipe width of the edge, hence the addition of the pipe width.
 			const f32 pairSpacing = (windowWidth + ObstaclePair::GetPipeWidth()) / MAX_VISIBLE_PAIRS;
 			const f32 loopLength = pairSpacing * NUM_OBSTACLE_PAIRS;
+			// The first pair spawns just outside the window (half a pipe past the right border),
+			// so no pipe is visible on the start screen and they all enter from the right.
+			const f32 firstPairX = windowWidth + ObstaclePair::GetPipeWidth() / 2.f;
 
 			for (i32 i = 0; i < NUM_OBSTACLE_PAIRS; i++)
 			{
-				const sf::Vector2f spawnPos = { windowWidth + i * pairSpacing, static_cast<f32>(window_.getSize().y) / 2.f };
+				const sf::Vector2f spawnPos = { firstPairX + i * pairSpacing, static_cast<f32>(window_.getSize().y) / 2.f };
 				obstaclePairs_[i] = Add<ObstaclePair>(spawnPos, loopLength);
 
 				// Add sprites to draw order pipeline.
@@ -1017,55 +1263,62 @@ namespace FlappyBirdGame
 			}
 
 			// Create background.
-			Add<Background>(window_.getSize());
+			background_ = Add<Background>(window_.getSize());
 
 			// SFX loading.
 			sfxManager_.Load("SCORE", SFX_SCORE_PATH.data());
-			sfxManager_.Load("HIT",	SFX_HIT_PATH.data());
+			sfxManager_.Load("HIT", SFX_HIT_PATH.data());
 			sfxManager_.Load("DIE", SFX_DIE_PATH.data());
+			sfxManager_.Load("RESTART", SFX_RESTART_PATH.data());
 
-			// HUD.
+			// UI screens. Which one is visible depends on the game state (see SetState()).
 			hud_ = AddScreen<HUDScreen>(window_.getSize());
+			startScreen_ = AddScreen<StartScreen>(window_.getSize());
+			gameOverScreen_ = AddScreen<GameOverScreen>(window_.getSize());
+
+			EnterReady();
 		}
 
 		void Update(const f32 deltaTime) override
 		{
-			::World::Update(deltaTime);
-			CheckCollisions();
-
-			static size_t nextObstacleIndex = 0;
-			if (bGameOver_) return;
-
-			auto* nextObstacle = obstaclePairs_[nextObstacleIndex];
-
-			if (nextObstacle->GetSprite().getPosition().x < bird_->GetSprite().getPosition().x) // Could use [[unlikely]] but I don't think it is necessary.
+			switch (state_)
 			{
-				scoreManager_.AddPoint();
-				hud_->SetScore(scoreManager_.GetCurrentScore());
-				std::cout << "SCORE: " << scoreManager_.GetCurrentScore()
-					<< " | TOP SCORE: " << scoreManager_.GetTopScore() << std::endl;
-				sfxManager_.Play("SCORE");
-				nextObstacleIndex = (nextObstacleIndex + 1) % NUM_OBSTACLE_PAIRS; // Next obstacle pair in circular manner.
-
+			case EGameState::Ready:    UpdateReady(deltaTime);   break;
+			case EGameState::Playing:  UpdatePlaying(deltaTime); break;
+			case EGameState::Dying:    UpdateDying(deltaTime);   break;
+			case EGameState::GameOver: UpdateScreens(deltaTime); break; // Nothing moves.
 			}
 		}
 
 		void HandleInput(const std::optional<sf::Event>& event) override
 		{
-			if (const auto* mouseClic = event->getIf<sf::Event::MouseButtonPressed>())
+			const auto* click = event->getIf<sf::Event::MouseButtonPressed>();
+			if (!click || click->button != sf::Mouse::Button::Left) return;
+
+			switch (state_)
 			{
-				if (mouseClic->button == sf::Mouse::Button::Left)
+			case EGameState::Ready:
+				StartGame();
+				break;
+			case EGameState::Playing:
+				bird_->Flap();
+				break;
+			case EGameState::Dying:
+				break; // The bird can't be controlled anymore.
+			case EGameState::GameOver:
+				if (gameOverScreen_->IsPlayButtonAt(sf::Vector2f(click->position)))
 				{
-					bird_->Flap();
+					Restart();
 				}
+				break;
 			}
 		}
 
 		void OnImGuiUpdateValues() override
 		{
-			
+
 			ImGui::DragFloat2("bottom offset:", &obstaclePairs_[0]->bottomOffset.x, 0.1f);
-			
+
 			if (ImGui::Button("Randomize Y", ImGui::CalcTextSize("pivot new random Y")) && &obstaclePairs_[0])
 			{
 				obstaclePairs_[0]->RandomizeSpritesY();
@@ -1129,10 +1382,10 @@ namespace FlappyBirdGame
 
 		void CheckCollisions()
 		{
-			if (bGameOver_) return; // Log only once.
+			if (state_ != EGameState::Playing) return; // Collisions only matter while playing (and it logs only once).
 
 			const sf::FloatRect birdBox = GetBirdHitbox();
-			
+
 			// Ground.
 			if (birdBox.findIntersection(floor_->GetSprite().getGlobalBounds()))
 			{
@@ -1158,8 +1411,10 @@ namespace FlappyBirdGame
 	private:
 		Bird* bird_;
 		Floor* floor_;
+		Background* background_ = nullptr;
+		sf::Vector2f birdStartPos_;
 		std::array<ObstaclePair*, NUM_OBSTACLE_PAIRS> obstaclePairs_ = {};
-		
+
 		struct HitboxSettings
 		{
 			bool show = true;
@@ -1168,6 +1423,7 @@ namespace FlappyBirdGame
 		};
 		HitboxSettings hitbox_;
 
+		// Draw in SFML default origin. TODO: center origin?
 		static void DrawDebugRect(sf::RenderWindow& window, const sf::FloatRect& rect, sf::Color color)
 		{
 			sf::RectangleShape shape(rect.size);
@@ -1178,9 +1434,124 @@ namespace FlappyBirdGame
 			window.draw(shape);
 		}
 
+		enum class EGameState
+		{
+			Ready,    // Start screen: bird floating, world scrolling, no pipes yet.
+			Playing,  // Normal gameplay.
+			Dying,    // The bird crashed: everything is frozen except the bird falling to the floor.
+			GameOver  // The bird landed: score panel and Play button.
+		};
+
+		// Everything that changes when the state changes is here, so it can't be forgotten.
+		void SetState(const EGameState state)
+		{
+			state_ = state;
+
+			const auto setVisible = [](UIScreen* screen, const bool visible)
+				{
+					visible ? screen->Show() : screen->Hide();
+				};
+			setVisible(startScreen_, state == EGameState::Ready);
+			setVisible(hud_, state == EGameState::Playing || state == EGameState::Dying);
+			setVisible(gameOverScreen_, state == EGameState::GameOver);
+		}
+
+		void EnterReady()
+		{
+			readyTime_ = 0.f;
+			startScreen_->SetTopScore(scoreManager_.GetTopScore());
+			SetState(EGameState::Ready);
+		}
+
+		void StartGame()
+		{
+			SetState(EGameState::Playing);
+			bird_->Flap(); // The click that starts the game is also the first flap.
+		}
+
+		// Back to the start screen with a fresh game.
+		void Restart()
+		{
+			scoreManager_.ResetScore();
+			hud_->SetScore(0);
+			sfxManager_.Play("RESTART");
+			bird_->Reset(birdStartPos_);
+			for (auto* obstPair : obstaclePairs_)
+			{
+				if (obstPair)
+				{
+					obstPair->Reset();
+				}
+			}
+			nextObstacleIndex_ = 0;
+
+			EnterReady();
+		}
+
+		// Start screen: the world scrolls, the bird and the title bob up and down.
+		void UpdateReady(const f32 deltaTime)
+		{
+			readyTime_ += deltaTime;
+			const f32 bob = std::sin(readyTime_ * BOB_SPEED) * BOB_AMPLITUDE;
+
+			background_->Update(deltaTime);
+			floor_->Update(deltaTime);
+			bird_->Hover(deltaTime, bob);
+			startScreen_->SetBob(bob);
+
+			UpdateScreens(deltaTime);
+		}
+
+		void UpdatePlaying(const f32 deltaTime)
+		{
+			::World::Update(deltaTime); // Everything moves: entities and screens.
+			CheckCollisions();
+			if (state_ != EGameState::Playing) return; // The bird just crashed.
+
+			auto* nextObstacle = obstaclePairs_[nextObstacleIndex_];
+
+			if (nextObstacle->GetSprite().getPosition().x < bird_->GetSprite().getPosition().x) // Could use [[unlikely]] but I don't think it is necessary.
+			{
+				scoreManager_.AddPoint();
+				hud_->SetScore(scoreManager_.GetCurrentScore());
+				std::cout << "SCORE: " << scoreManager_.GetCurrentScore()
+					<< " | TOP SCORE: " << scoreManager_.GetTopScore() << std::endl;
+				sfxManager_.Play("SCORE");
+				nextObstacleIndex_ = (nextObstacleIndex_ + 1) % NUM_OBSTACLE_PAIRS; // Next obstacle pair in circular manner.
+			}
+		}
+
+		// Only the bird moves (falls). Floor, background and pipes stay frozen.
+		void UpdateDying(const f32 deltaTime)
+		{
+			bird_->ApplyPhysics(deltaTime);
+
+			// Landed: the lowest visible pixel of the bird touches the top of the floor.
+			const f32 floorTop = floor_->GetSprite().getGlobalBounds().position.y;
+			const f32 birdBottomOffset = bird_->GetLowestVisibleOffset();
+			if (bird_->GetSprite().getPosition().y + birdBottomOffset >= floorTop)
+			{
+				// Rest exactly on the floor.
+				bird_->GetSprite().setPosition({ bird_->GetSprite().getPosition().x, floorTop - birdBottomOffset });
+				gameOverScreen_->SetScores(scoreManager_.GetCurrentScore(), scoreManager_.GetTopScore());
+				SetState(EGameState::GameOver);
+			}
+
+			UpdateScreens(deltaTime);
+		}
+
+		// World::Update() also updates the screens. The states that don't call it do it here.
+		void UpdateScreens(const f32 deltaTime)
+		{
+			for (auto& screen : screens_)
+			{
+				screen->Update(deltaTime);
+			}
+		}
+
 		void OnBirdHit(const char* what)
 		{
-			bGameOver_ = true;
+			SetState(EGameState::Dying);
 			scoreManager_.SaveTopScore();
 			std::cout << "COLLISION with " << what
 				<< " | Final Score: " << scoreManager_.GetCurrentScore()
@@ -1188,16 +1559,22 @@ namespace FlappyBirdGame
 			sfxManager_.Play("HIT");
 		}
 
-		bool bGameOver_ = false;
+		EGameState state_ = EGameState::Ready;
+		f32 readyTime_ = 0.f;
+		size_t nextObstacleIndex_ = 0; // Next pair the bird has to pass. A member (not a static) so a restart can reset it.
+		static constexpr f32 BOB_SPEED = 4.f;      // Radians per second.
+		static constexpr f32 BOB_AMPLITUDE = 8.f;  // Pixels up and down.
 		SFXManager sfxManager_; // I think an audio system should be placed in the application, instead of the world, but for this small game it is not necessary.
 		ScoreManager scoreManager_;
 
 		HUDScreen* hud_ = nullptr;
-		
+		StartScreen* startScreen_ = nullptr;
+		GameOverScreen* gameOverScreen_ = nullptr;
+
 		static constexpr std::string_view SFX_SCORE_PATH = "Assets/sfx_point.wav";
 		static constexpr std::string_view SFX_HIT_PATH = "Assets/sfx_hit.wav";
 		static constexpr std::string_view SFX_DIE_PATH = "Assets/sfx_die.wav"; // This audio is played when the bird dies crashing agains an obstacle.
-
+		static constexpr std::string_view SFX_RESTART_PATH = "Assets/sfx_swooshing.wav"; // Played when player clics Play Again button in game over screen.
 		static constexpr std::string_view backgroundTexturePath_ = "Assets/background-day.png";
 	};
 } // namespace FlappyBirdGame
@@ -1205,14 +1582,14 @@ namespace FlappyBirdGame
 
 int main()
 {
-	sf::RenderWindow window( sf::VideoMode( { 480, 600} ), // Original Flappy bird size according to google: 288*512.
-		"SFML works!",
+	sf::RenderWindow window(sf::VideoMode({ 480, 600 }), // Original Flappy bird size according to google: 288*512.
+		"Flappy bird clone by Sebastian Lara!",
 		sf::Style::Titlebar | sf::Style::Close // No resizing.
-		);
+	);
 	window.setFramerateLimit(60U);
-	
+
 	App<FlappyBirdGame::World> app{ window };
-	
+
 	app.Run();
 
 	return 0;
