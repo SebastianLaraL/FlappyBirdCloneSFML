@@ -342,14 +342,12 @@ public:
 
 			// IMGUI drawing.
 			ImGui::SFML::Update(window_, time);
-			ImGui::Begin("BEGIN IMGUI");
 #ifdef _DEBUG
+			ImGui::Begin("BEGIN IMGUI");
 			DrawImGuiStuff();
 			world_->OnImGuiUpdateValues();
-#endif
-
 			ImGui::End();
-
+#endif
 
 			world_->Update(deltaTime);
 
@@ -965,7 +963,6 @@ namespace FlappyBirdGame
 	class ScoreNumber : public UIElement
 	{
 	public:
-		// 'anchor': x is the horizontal center of the number, y is the top of the digits.
 		explicit ScoreNumber(const sf::Vector2f anchor) : anchor_(anchor)
 		{
 			Rebuild();
