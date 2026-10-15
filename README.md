@@ -228,13 +228,13 @@ CMake uses `FetchContent` to retrieve SFML 3.1.0, Dear ImGui, and ImGui-SFML, an
 The presets use the Ninja generator, so run these commands from a Visual Studio *Developer PowerShell* (or open the folder directly in Visual Studio, which handles the environment for you):
 
 ```powershell
-git clone https://github.com/<YOUR-USERNAME>/<REPOSITORY-NAME>.git
-cd <REPOSITORY-NAME>
+git clone https://github.com/SebastianLaraL/FlappyBirdCloneSFML.git
+cd FlappyBirdCloneSFML
 cmake --preset x64-Release
 cmake --build out/build/x64-Release
 ```
 
-Replace `<YOUR-USERNAME>` and `<REPOSITORY-NAME>` with the actual repository URL and folder name. Use `x64-Debug` instead to get the debug tools. The executable is generated at:
+Use `x64-Debug` instead to get the debug tools. The executable is generated at:
 
 ```text
 out/build/x64-Release/bin/main.exe
