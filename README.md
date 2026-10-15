@@ -222,7 +222,7 @@ The assets are third-party files and are **not** covered by this project's MIT l
 - Git and an Internet connection, so CMake can download the dependencies during configuration
 
 CMake uses `FetchContent` to retrieve SFML 3.1.0, Dear ImGui, and ImGui-SFML, and builds them as static libraries. A post-build step copies the `Assets` folder next to the executable.
-
+<!-- COMMENTED TODO: validate Ninja build
 ### Build with the presets
 
 The presets use the Ninja generator, so run these commands from a Visual Studio *Developer PowerShell*, or open the folder directly in Visual Studio:
@@ -245,7 +245,7 @@ The executable is generated at:
 Release: out/build/x64-Release/bin/main.exe
 Debug: out/build/x64-Debug/bin/main.exe
 ```
-<!-- COMMENTED TODO: validate Ninja build
+
 ### Build with a Visual Studio generator
 
 ```powershell
