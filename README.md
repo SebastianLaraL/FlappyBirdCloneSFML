@@ -157,7 +157,7 @@ Game logic is organized as an `EGameState` state machine in the game world. `Set
 ### Debugging tools
 
 In Debug builds, Dear ImGui and ImGui-SFML provide a panel to adjust the pipe offsets, re-randomize a pipe pair, toggle the bird's vertical movement, change the bird's hitbox scale, and show the hitboxes and sprite bounds as an overlay. Release builds draw none of this.
-
+![Old Debug Screenshot](docs/screenshots/oldDebugSS.png)
 ## Project Structure
 
 ```text
