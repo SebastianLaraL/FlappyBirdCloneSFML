@@ -245,7 +245,7 @@ The executable is generated at:
 Release: out/build/x64-Release/bin/main.exe
 Debug: out/build/x64-Debug/bin/main.exe
 ```
-
+<!-- COMMENTED TODO: validate Ninja build
 ### Build with a Visual Studio generator
 
 ```powershell
@@ -262,6 +262,7 @@ The executable is generated at:
 Release: build/bin/Release/main.exe
 Debug: build/bin/Debug/main.exe
 ```
+-->
 ### Debug and Release builds
 
 | | Debug | Release |
