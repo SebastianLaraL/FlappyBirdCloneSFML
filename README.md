@@ -225,7 +225,7 @@ CMake uses `FetchContent` to retrieve SFML 3.1.0, Dear ImGui, and ImGui-SFML, an
 
 ### Build with the presets
 
-The presets use the Ninja generator, so run these commands from a Visual Studio *Developer PowerShell* (or open the folder directly in Visual Studio, which handles the environment for you):
+The presets use the Ninja generator, so run these commands from a Visual Studio *Developer PowerShell*, or open the folder directly in Visual Studio:
 
 ```powershell
 git clone https://github.com/SebastianLaraL/FlappyBirdCloneSFML.git
@@ -234,10 +234,16 @@ cmake --preset x64-Release
 cmake --build out/build/x64-Release
 ```
 
-Use `x64-Debug` instead to get the debug tools. The executable is generated at:
+To build the Debug configuration instead, use:
+```powershell
+cmake --preset x64-Debug
+cmake --build out/build/x64-Debug
+```
+The executable is generated at:
 
 ```text
-out/build/x64-Release/bin/main.exe
+Release: out/build/x64-Release/bin/main.exe
+Debug: out/build/x64-Debug/bin/main.exe
 ```
 
 ### Build with a Visual Studio generator
@@ -247,8 +253,15 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
-The executable is then at `build/bin/Release/main.exe`.
-
+For a Debug build, run:
+```powershell
+cmake --build build --config Debug
+```
+The executable is generated at:
+```text
+Release: build/bin/Release/main.exe
+Debug: build/bin/Debug/main.exe
+```
 ### Debug and Release builds
 
 | | Debug | Release |
